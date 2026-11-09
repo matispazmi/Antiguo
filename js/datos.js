@@ -1,0 +1,88 @@
+"use strict";
+
+// Catálogos y datos iniciales para la demostración académica.
+const TIPOS_MANTENIMIENTO = [
+  "Cambio de aceite", "Revisión de frenos", "Mantenimiento de motor",
+  "Cambio de filtros", "Diagnóstico general", "Revisión de neumáticos"
+];
+const ESTADOS = ["Pendiente", "En proceso", "Finalizado"];
+const CONFIGURACION = { claves: { usuarios: "autoPan_usuarios", mantenimientos: "autoPan_mantenimientos", sesion: "autoPan_sesion", historial: "autoPan_historial" } };
+const USUARIOS_INICIALES = [
+  { id: 1, nombre: "Administrador", correo: "admin@autoPan.com", password: "admin123", rol: "admin", cedula: "", telefono: "" },
+  { id: 2, nombre: "Usuario Demo", correo: "usuario@autoPan.com", password: "usuario123", rol: "usuario", tipoDocumento: "cedula", cedula: "0912345678", telefono: "0988618939" }
+];
+const MANTENIMIENTOS_INICIALES = [
+  { id: "AC-1001", usuarioId: 2, propietario: "Usuario Demo", tipoDocumento: "cedula", cedula: "0912345678", correo: "usuario@autoPan.com", telefono: "0988618939", vehiculo: { marca: "Toyota", modelo: "Corolla", anio: 2020, placa: "ABC-1234", kilometraje: 50000 }, tipoMantenimiento: "Cambio de aceite", fecha: "2026-11-25", horaRevision: "09:00", descripcion: "Cambio de aceite y filtros", observaciones: "Prefiere atención por la mañana", estado: "Pendiente", creado: "2026-11-08T09:00:00.000Z" },
+  { id: "AC-1002", usuarioId: 2, propietario: "Usuario Demo", tipoDocumento: "cedula", cedula: "0912345678", correo: "usuario@autoPan.com", telefono: "0988618939", vehiculo: { marca: "Kia", modelo: "Rio", anio: 2019, placa: "PQR-5678", kilometraje: 72000 }, tipoMantenimiento: "Revisión de frenos", fecha: "2026-11-27", horaRevision: "10:30", descripcion: "Revisar ruido al frenar", observaciones: "", estado: "En proceso", creado: "2026-11-08T10:00:00.000Z" },
+  { id: "AC-1003", usuarioId: 1, propietario: "María Fernanda López", tipoDocumento: "cedula", cedula: "0923456789", correo: "maria@example.com", telefono: "0987654321", vehiculo: { marca: "Chevrolet", modelo: "Onix", anio: 2022, placa: "GTR-2468", kilometraje: 28000 }, tipoMantenimiento: "Diagnóstico general", fecha: "2026-11-20", horaRevision: "14:00", descripcion: "Revisión preventiva antes de viajar", observaciones: "", estado: "Finalizado", creado: "2026-11-08T11:00:00.000Z" }
+];
+
+function leerJSON(clave, valorInicial) {
+  try { const guardado = localStorage.getItem(clave); return guardado ? JSON.parse(guardado) : valorInicial; }
+  catch (error) { console.warn("No se pudieron leer los datos guardados:", error); return valorInicial; }
+}
+let usuarios = leerJSON(CONFIGURACION.claves.usuarios, USUARIOS_INICIALES);
+let mantenimientos = leerJSON(CONFIGURACION.claves.mantenimientos, MANTENIMIENTOS_INICIALES);
+let historial = leerJSON(CONFIGURACION.claves.historial, []);
+function escribirJSON(clave, valor) {
+  try { localStorage.setItem(clave, JSON.stringify(valor)); return true; }
+  catch (error) { console.error("No se pudieron guardar los datos en este navegador:", error); return false; }
+}
+function guardarUsuarios() { return escribirJSON(CONFIGURACION.claves.usuarios, usuarios); }
+function guardarMantenimientos() { return escribirJSON(CONFIGURACION.claves.mantenimientos, mantenimientos); }
+function obtenerUsuarios() { usuarios = leerJSON(CONFIGURACION.claves.usuarios, USUARIOS_INICIALES); return usuarios; }
+function obtenerMantenimientos() { mantenimientos = leerJSON(CONFIGURACION.claves.mantenimientos, MANTENIMIENTOS_INICIALES); return mantenimientos; }
+function guardarHistorial(accion, mantenimiento) {
+  historial.push({ accion, mantenimientoId: mantenimiento.id, fecha: new Date().toISOString() });
+  if (!escribirJSON(CONFIGURACION.claves.historial, historial)) historial.pop();
+}
+function generarId() { return `AC-${Date.now().toString().slice(-7)}${Math.floor(Math.random() * 90 + 10)}`; }
+function escaparHTML(valor) {
+  return String(valor ?? "").replace(/[&<>"']/g, caracter => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[caracter]);
+}
+function mostrarNotificacion(mensaje, tipo = "exito") {
+  let aviso = document.querySelector(".notificacion");
+  if (!aviso) { aviso = document.createElement("div"); aviso.className = "notificacion"; aviso.setAttribute("role", "status"); document.body.append(aviso); }
+  aviso.textContent = mensaje; aviso.className = `notificacion ${tipo} visible`;
+  window.clearTimeout(mostrarNotificacion.temporizador);
+  mostrarNotificacion.temporizador = window.setTimeout(() => aviso.classList.remove("visible"), 3500);
+}
+function fechaLocalISO() { const ahora = new Date(); return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`; }
+function validarIdentificacion(tipo, valor) {
+  const identificacion = String(valor || "").trim();
+  if (tipo === "cedula") return /^\d{10}$/.test(identificacion);
+  if (tipo === "ruc") return /^\d{13}$/.test(identificacion);
+  return tipo === "pasaporte" && /^[A-Z0-9]{6,15}$/i.test(identificacion);
+}
+function prepararValidacionDocumento(selector, campo) {
+  if (!selector || !campo || selector.dataset.configurado === "true") return;
+  const actualizar = () => {
+    const tipo = selector.value;
+    campo.maxLength = tipo === "cedula" ? 10 : tipo === "ruc" ? 13 : 15;
+    campo.inputMode = tipo === "pasaporte" ? "text" : "numeric";
+    campo.placeholder = tipo === "cedula" ? "10 dígitos" : tipo === "ruc" ? "13 dígitos" : "6 a 15 letras o números";
+    campo.pattern = tipo === "cedula" ? "[0-9]{10}" : tipo === "ruc" ? "[0-9]{13}" : "[A-Za-z0-9]{6,15}";
+    campo.title = tipo === "cedula" ? "La cédula debe tener exactamente 10 dígitos." : tipo === "ruc" ? "El RUC debe tener exactamente 13 dígitos." : "El pasaporte debe tener de 6 a 15 letras o números.";
+    campo.value = tipo === "pasaporte" ? campo.value.replace(/[^a-z0-9]/gi, "").toUpperCase() : campo.value.replace(/\D/g, "").slice(0, campo.maxLength);
+  };
+  selector.addEventListener("change", actualizar);
+  campo.addEventListener("input", () => {
+    campo.value = selector.value === "pasaporte" ? campo.value.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 15) : campo.value.replace(/\D/g, "").slice(0, campo.maxLength);
+  });
+  selector.dataset.configurado = "true";
+  actualizar();
+}
+function prepararCampoNumerico(campo, maximo) {
+  if (!campo || campo.dataset.numericoConfigurado === "true") return;
+  campo.maxLength = maximo;
+  campo.inputMode = "numeric";
+  campo.addEventListener("input", () => { campo.value = campo.value.replace(/\D/g, "").slice(0, maximo); });
+  campo.dataset.numericoConfigurado = "true";
+}
+
+// Inicializa los catálogos y registros de demostración solo la primera vez.
+try {
+  if (!localStorage.getItem(CONFIGURACION.claves.usuarios)) escribirJSON(CONFIGURACION.claves.usuarios, usuarios);
+  if (!localStorage.getItem(CONFIGURACION.claves.mantenimientos)) escribirJSON(CONFIGURACION.claves.mantenimientos, mantenimientos);
+  if (!localStorage.getItem(CONFIGURACION.claves.historial)) escribirJSON(CONFIGURACION.claves.historial, historial);
+} catch (error) { console.warn("El navegador no habilitó el almacenamiento local:", error); }
