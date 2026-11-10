@@ -32,13 +32,15 @@ function renderizarUsuarios() {
   const cuerpo = document.querySelector("#tabla-usuarios");
   const lista = obtenerUsuarios();
   const sesion = obtenerSesion();
-  const administradores = lista.filter(usuario => usuario.rol === "admin").length;
+  const administradores = lista.filter(usuario => usuario.rol === "admin" && usuario.activo !== false).length;
   cuerpo.innerHTML = lista.length ? lista.map(usuario => {
     const tipo = { cedula: "Cédula", pasaporte: "Pasaporte", ruc: "RUC" }[usuario.tipoDocumento] || "Documento";
     const documento = usuario.cedula ? `${tipo}: ${usuario.cedula}` : "Pendiente de registrar";
-    const noPuedeEliminar = usuario.rol === "admin" && (String(usuario.id) === String(sesion?.id) || administradores <= 1);
-    return `<tr><td><strong>👤 ${escaparHTML(usuario.nombre)}</strong><small>ID ${escaparHTML(usuario.id)}</small></td><td>🪪 ${escaparHTML(documento)}</td><td>✉ ${escaparHTML(usuario.correo)}</td><td>☎ ${escaparHTML(usuario.telefono || "Pendiente de registrar")}</td><td><span class="rol-tag">${usuario.rol === "admin" ? "🛡 Administrador" : "🚗 Usuario"}</span></td><td><div class="acciones"><button class="icono-boton" data-accion-usuario="editar" data-id="${escaparHTML(usuario.id)}" aria-label="Editar cuenta de ${escaparHTML(usuario.nombre)}" title="Editar cuenta">✎</button><button class="icono-boton peligro" data-accion-usuario="eliminar" data-id="${escaparHTML(usuario.id)}" aria-label="Eliminar cuenta de ${escaparHTML(usuario.nombre)}" title="Eliminar cuenta" ${noPuedeEliminar ? "disabled" : ""}>×</button></div></td></tr>`;
-  }).join("") : '<tr><td class="tabla-vacia" colspan="6">Todavía no hay usuarios registrados.</td></tr>';
+    const activa = usuario.activo !== false;
+    const esAdminActual = usuario.rol === "admin" && String(usuario.id) === String(sesion?.id);
+    const noPuedeGestionarAdmin = esAdminActual || (usuario.rol === "admin" && activa && administradores <= 1);
+    return `<tr class="${activa ? "" : "fila-desactivada"}"><td><strong>👤 ${escaparHTML(usuario.nombre)}</strong><small>ID ${escaparHTML(usuario.id)}</small></td><td>🪪 ${escaparHTML(documento)}</td><td>✉ ${escaparHTML(usuario.correo)}</td><td>☎ ${escaparHTML(usuario.telefono || "Pendiente de registrar")}</td><td><span class="rol-tag">${usuario.rol === "admin" ? "🛡 Administrador" : "🚗 Usuario"}</span></td><td><span class="estado ${activa ? "estado-finalizado" : "estado-inactiva"}">${activa ? "Activa" : "Deshabilitada"}</span></td><td><div class="acciones"><button class="icono-boton" data-accion-usuario="editar" data-id="${escaparHTML(usuario.id)}" aria-label="Editar cuenta de ${escaparHTML(usuario.nombre)}" title="Editar cuenta">✎</button><button class="icono-boton ${activa ? "peligro" : "activar"}" data-accion-usuario="toggle" data-id="${escaparHTML(usuario.id)}" aria-label="${activa ? "Deshabilitar" : "Habilitar"} cuenta" title="${activa ? "Deshabilitar" : "Habilitar"} cuenta" ${noPuedeGestionarAdmin ? "disabled" : ""}>${activa ? "⏻" : "⏽"}</button><button class="icono-boton peligro" data-accion-usuario="eliminar" data-id="${escaparHTML(usuario.id)}" aria-label="Eliminar cuenta de ${escaparHTML(usuario.nombre)}" title="Eliminar cuenta" ${noPuedeGestionarAdmin ? "disabled" : ""}>×</button></div></td></tr>`;
+  }).join("") : '<tr><td class="tabla-vacia" colspan="7">Todavía no hay usuarios registrados.</td></tr>';
 }
 function abrirEdicionUsuario(id) {
   const usuario = usuarios.find(registro => String(registro.id) === String(id));
@@ -71,20 +73,36 @@ function guardarEdicionUsuario(id) {
   if (!validarIdentificacion(tipoDocumento, cedula)) { mostrarNotificacion("El documento no coincide con el tipo seleccionado.", "error"); return; }
   if (!/^\d{10}$/.test(telefono)) { mostrarNotificacion("El teléfono celular debe tener exactamente 10 dígitos.", "error"); return; }
   const anterior = { ...usuario };
+  const mantenimientosAnteriores = mantenimientos;
   Object.assign(usuario, { nombre: String(datos.get("nombre")).trim(), correo, tipoDocumento, cedula, telefono });
-  if (!guardarUsuarios()) { Object.assign(usuario, anterior); mostrarNotificacion("No se pudieron guardar los cambios de la cuenta.", "error"); return; }
+  mantenimientos = mantenimientos.map(item => item.usuarioId === usuario.id ? { ...item, propietario: usuario.nombre, correo: usuario.correo, tipoDocumento, cedula, telefono } : item);
+  if (!guardarUsuarios()) { Object.assign(usuario, anterior); mantenimientos = mantenimientosAnteriores; mostrarNotificacion("No se pudieron guardar los cambios de la cuenta.", "error"); return; }
+  if (!guardarMantenimientos()) { Object.assign(usuario, anterior); guardarUsuarios(); mantenimientos = mantenimientosAnteriores; mostrarNotificacion("No se pudieron actualizar las solicitudes de esta cuenta.", "error"); return; }
   if (String(obtenerSesion()?.id) === String(usuario.id)) escribirJSON(CONFIGURACION.claves.sesion, { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol });
   guardarHistorial("cuenta_editada", { id: usuario.id });
   document.querySelector("#dialogo-usuario").close(); renderizarUsuarios(); mostrarNotificacion("Los datos de la cuenta fueron actualizados.");
 }
-function eliminarCuentaUsuario(id) {
+async function cambiarEstadoUsuario(id) {
   const usuario = usuarios.find(registro => String(registro.id) === String(id));
   if (!usuario) return;
   const sesion = obtenerSesion();
-  const adminCount = usuarios.filter(persona => persona.rol === "admin").length;
+  if (usuario.rol === "admin" && String(usuario.id) === String(sesion?.id)) { mostrarNotificacion("No puedes deshabilitar la cuenta administradora de esta sesión.", "error"); return; }
+  const activaAnterior = usuario.activo !== false;
+  if (activaAnterior && usuario.rol === "admin" && usuarios.filter(persona => persona.rol === "admin" && persona.activo !== false).length <= 1) { mostrarNotificacion("Debe quedar al menos una cuenta administradora habilitada.", "error"); return; }
+  if (activaAnterior && !await confirmarAccion(`La cuenta de ${usuario.nombre} ya no podrá iniciar sesión hasta que la habilites.`, "¿Deshabilitar esta cuenta?", "Deshabilitar")) return;
+  usuario.activo = !activaAnterior;
+  if (!guardarUsuarios()) { usuario.activo = activaAnterior; mostrarNotificacion("No se pudo guardar el estado de la cuenta.", "error"); return; }
+  guardarHistorial(usuario.activo ? "cuenta_habilitada" : "cuenta_deshabilitada", { id: usuario.id });
+  renderizarUsuarios(); mostrarNotificacion(usuario.activo ? "Cuenta habilitada." : "Cuenta deshabilitada.");
+}
+async function eliminarCuentaUsuario(id) {
+  const usuario = usuarios.find(registro => String(registro.id) === String(id));
+  if (!usuario) return;
+  const sesion = obtenerSesion();
+  const adminCount = usuarios.filter(persona => persona.rol === "admin" && persona.activo !== false).length;
   if (usuario.rol === "admin" && String(usuario.id) === String(sesion?.id)) { mostrarNotificacion("No puedes eliminar la cuenta con la que tienes iniciada esta sesión.", "error"); return; }
-  if (usuario.rol === "admin" && adminCount <= 1) { mostrarNotificacion("Debe quedar al menos una cuenta administradora.", "error"); return; }
-  if (!window.confirm(`¿Eliminar la cuenta de ${usuario.nombre}? Sus solicitudes históricas se conservarán para el administrador.`)) return;
+  if (usuario.rol === "admin" && usuario.activo !== false && adminCount <= 1) { mostrarNotificacion("Debe quedar al menos una cuenta administradora habilitada.", "error"); return; }
+  if (!await confirmarAccion(`Las solicitudes históricas de ${usuario.nombre} se conservarán para el administrador.`, `¿Eliminar la cuenta de ${usuario.nombre}?`, "Eliminar cuenta")) return;
   const listaAnterior = usuarios;
   usuarios = usuarios.filter(persona => String(persona.id) !== String(id));
   if (!guardarUsuarios()) { usuarios = listaAnterior; mostrarNotificacion("No se pudo eliminar la cuenta del almacenamiento local.", "error"); return; }
@@ -94,6 +112,7 @@ function procesarAccionUsuario(evento) {
   const boton = evento.target.closest("button[data-accion-usuario]");
   if (!boton || boton.disabled) return;
   if (boton.dataset.accionUsuario === "editar") abrirEdicionUsuario(boton.dataset.id);
+  if (boton.dataset.accionUsuario === "toggle") cambiarEstadoUsuario(boton.dataset.id);
   if (boton.dataset.accionUsuario === "eliminar") eliminarCuentaUsuario(boton.dataset.id);
 }
 function abrirDetalle(mantenimiento, modo) {
@@ -107,11 +126,11 @@ function abrirDetalle(mantenimiento, modo) {
   const area = document.querySelector("#contenido-dialogo");
   if (lectura) {
     const tipo = { cedula: "Cédula", pasaporte: "Pasaporte", ruc: "RUC" }[mantenimiento.tipoDocumento] || "Documento";
-    area.innerHTML = `<div class="detalle-grid"><div><span>👤 Propietario</span><strong>${escaparHTML(mantenimiento.propietario)}</strong></div><div><span>🪪 ${tipo}</span><strong>${escaparHTML(mantenimiento.cedula)}</strong></div><div><span>✉ Correo</span><strong>${escaparHTML(mantenimiento.correo)}</strong></div><div><span>☎ Teléfono</span><strong>${escaparHTML(mantenimiento.telefono)}</strong></div><div><span>🚘 Vehículo</span><strong>${escaparHTML(mantenimiento.vehiculo.marca)} ${escaparHTML(mantenimiento.vehiculo.modelo)} (${mantenimiento.vehiculo.anio})</strong></div><div><span>🔖 Placa y kilometraje</span><strong>${escaparHTML(mantenimiento.vehiculo.placa)} · ${Number(mantenimiento.vehiculo.kilometraje).toLocaleString("es-EC")} km</strong></div><div><span>🛠 Servicio</span><strong>${escaparHTML(mantenimiento.tipoMantenimiento)}</strong></div><div><span>📅 Fecha y hora de revisión</span><strong>${escaparHTML(mantenimiento.fecha)} · ${escaparHTML(mantenimiento.horaRevision || "Sin hora asignada")}</strong></div><div><span>● Estado</span><strong>${mantenimiento.activa === false ? "Desactivada" : escaparHTML(mantenimiento.estado)}</strong></div><div class="detalle-ancho"><span>📝 Descripción</span><strong>${escaparHTML(mantenimiento.descripcion)}</strong></div><div class="detalle-ancho"><span>💬 Observaciones</span><strong>${escaparHTML(mantenimiento.observaciones || "Sin observaciones")}</strong></div></div>`;
+    area.innerHTML = `<div class="detalle-grid"><div><span>👤 Propietario</span><strong>${escaparHTML(mantenimiento.propietario)}</strong></div><div><span>🪪 ${tipo}</span><strong>${escaparHTML(mantenimiento.cedula)}</strong></div><div><span>✉ Correo</span><strong>${escaparHTML(mantenimiento.correo)}</strong></div><div><span>☎ Teléfono</span><strong>${escaparHTML(mantenimiento.telefono)}</strong></div><div><span>🚘 Vehículo</span><strong>${escaparHTML(mantenimiento.vehiculo.marca)} ${escaparHTML(mantenimiento.vehiculo.modelo)} (${mantenimiento.vehiculo.anio})</strong></div><div><span>🔖 Placa y kilometraje</span><strong>${escaparHTML(mantenimiento.vehiculo.placa)} · ${Number(mantenimiento.vehiculo.kilometraje).toLocaleString("es-EC")} km</strong></div><div><span>🛠 Servicio</span><strong>${escaparHTML(mantenimiento.tipoMantenimiento)}</strong></div><div><span>📅 Fecha y hora de revisión</span><strong>${escaparHTML(mantenimiento.fecha)} · ${escaparHTML(mantenimiento.horaRevision || "Sin hora asignada")} · ${escaparHTML(mantenimiento.jornada || "Sin preferencia")}</strong></div><div><span>● Estado</span><strong>${mantenimiento.activa === false ? "Desactivada" : escaparHTML(mantenimiento.estado)}</strong></div><div class="detalle-ancho"><span>📝 Descripción</span><strong>${escaparHTML(mantenimiento.descripcion)}</strong></div><div class="detalle-ancho"><span>💬 Observaciones</span><strong>${escaparHTML(mantenimiento.observaciones || "Sin observaciones")}</strong></div></div>`;
     document.querySelector("#guardar-edicion").hidden = true;
   } else {
     const tipoActual = mantenimiento.tipoDocumento || "cedula";
-    area.innerHTML = `<form id="form-edicion" class="form-grid"><label>👤 Propietario<input name="propietario" required value="${escaparHTML(mantenimiento.propietario)}"></label><label>Tipo de documento<select name="tipoDocumento"><option value="cedula" ${tipoActual === "cedula" ? "selected" : ""}>Cédula</option><option value="pasaporte" ${tipoActual === "pasaporte" ? "selected" : ""}>Pasaporte</option><option value="ruc" ${tipoActual === "ruc" ? "selected" : ""}>RUC</option></select></label><label>🪪 Número de documento<input name="cedula" required value="${escaparHTML(mantenimiento.cedula)}"></label><label>✉ Correo<input name="correo" type="email" required value="${escaparHTML(mantenimiento.correo)}"></label><label>☎ Teléfono celular (10 dígitos)<input name="telefono" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" required value="${escaparHTML(mantenimiento.telefono)}"></label><label>🚘 Marca<input name="marca" required value="${escaparHTML(mantenimiento.vehiculo.marca)}"></label><label>🚘 Modelo<input name="modelo" required value="${escaparHTML(mantenimiento.vehiculo.modelo)}"></label><label>📆 Año<input name="anio" type="number" min="1950" max="${new Date().getFullYear() + 1}" required value="${mantenimiento.vehiculo.anio}"></label><label>🔖 Placa<input name="placa" required pattern="[A-Za-z0-9-]{5,10}" value="${escaparHTML(mantenimiento.vehiculo.placa)}"></label><label>🛞 Kilometraje<input name="kilometraje" type="number" min="0" required value="${mantenimiento.vehiculo.kilometraje}"></label><label>🛠 Tipo de servicio<select name="tipoMantenimiento">${TIPOS_MANTENIMIENTO.map(tipo => `<option ${tipo === mantenimiento.tipoMantenimiento ? "selected" : ""}>${escaparHTML(tipo)}</option>`).join("")}</select></label><label>📅 Fecha<input name="fecha" type="date" required value="${escaparHTML(mantenimiento.fecha)}"></label><label>◷ Hora de revisión<input name="horaRevision" type="time" required value="${escaparHTML(mantenimiento.horaRevision || "09:00")}"></label><label>● Estado<select name="estado">${ESTADOS.map(valor => `<option ${valor === mantenimiento.estado ? "selected" : ""}>${valor}</option>`).join("")}</select></label><label class="ancho-completo">📝 Descripción<textarea name="descripcion" required rows="3">${escaparHTML(mantenimiento.descripcion)}</textarea></label><label class="ancho-completo">💬 Observaciones<textarea name="observaciones" rows="2">${escaparHTML(mantenimiento.observaciones)}</textarea></label></form>`;
+    area.innerHTML = `<form id="form-edicion" class="form-grid"><label>👤 Propietario<input name="propietario" required value="${escaparHTML(mantenimiento.propietario)}"></label><label>Tipo de documento<select name="tipoDocumento"><option value="cedula" ${tipoActual === "cedula" ? "selected" : ""}>Cédula</option><option value="pasaporte" ${tipoActual === "pasaporte" ? "selected" : ""}>Pasaporte</option><option value="ruc" ${tipoActual === "ruc" ? "selected" : ""}>RUC</option></select></label><label>🪪 Número de documento<input name="cedula" required value="${escaparHTML(mantenimiento.cedula)}"></label><label>✉ Correo<input name="correo" type="email" required value="${escaparHTML(mantenimiento.correo)}"></label><label>☎ Teléfono celular (10 dígitos)<input name="telefono" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" required value="${escaparHTML(mantenimiento.telefono)}"></label><label>🚘 Marca<input name="marca" required value="${escaparHTML(mantenimiento.vehiculo.marca)}"></label><label>🚘 Modelo<input name="modelo" required value="${escaparHTML(mantenimiento.vehiculo.modelo)}"></label><label>📆 Año<input name="anio" type="number" min="1950" max="${new Date().getFullYear() + 1}" required value="${mantenimiento.vehiculo.anio}"></label><label>🔖 Placa<input name="placa" required pattern="[A-Za-z0-9-]{5,10}" value="${escaparHTML(mantenimiento.vehiculo.placa)}"></label><label>🛞 Kilometraje<input name="kilometraje" type="number" min="0" required value="${mantenimiento.vehiculo.kilometraje}"></label><label>🛠 Tipo de servicio<select name="tipoMantenimiento">${TIPOS_MANTENIMIENTO.map(tipo => `<option ${tipo === mantenimiento.tipoMantenimiento ? "selected" : ""}>${escaparHTML(tipo)}</option>`).join("")}</select></label><label>📅 Fecha<input name="fecha" type="date" required value="${escaparHTML(mantenimiento.fecha)}"></label><label>◷ Hora de revisión<input name="horaRevision" type="time" required value="${escaparHTML(mantenimiento.horaRevision || "09:00")}"></label><label>Jornada<select name="jornada"><option ${mantenimiento.jornada === "Mañana" ? "selected" : ""}>Mañana</option><option ${mantenimiento.jornada === "Tarde" ? "selected" : ""}>Tarde</option></select></label><label class="checkbox-confirmacion"><input name="confirmacion" type="checkbox" ${mantenimiento.confirmacion ? "checked" : ""}> Datos confirmados</label><label>● Estado<select name="estado">${ESTADOS.map(valor => `<option ${valor === mantenimiento.estado ? "selected" : ""}>${valor}</option>`).join("")}</select></label><label class="ancho-completo">📝 Descripción<textarea name="descripcion" required rows="3">${escaparHTML(mantenimiento.descripcion)}</textarea></label><label class="ancho-completo">💬 Observaciones<textarea name="observaciones" rows="2">${escaparHTML(mantenimiento.observaciones)}</textarea></label></form>`;
     const formulario = area.querySelector("#form-edicion");
     prepararValidacionDocumento(formulario.elements.tipoDocumento, formulario.elements.cedula);
     prepararCampoNumerico(formulario.elements.telefono, 10);
@@ -128,26 +147,26 @@ function editarMantenimiento(id) {
   if (!validarIdentificacion(String(datos.get("tipoDocumento")), String(datos.get("cedula")))) { mostrarNotificacion("El documento no coincide con el tipo seleccionado.", "error"); return; }
   if (!/^\d{10}$/.test(String(datos.get("telefono")))) { mostrarNotificacion("El teléfono celular debe tener exactamente 10 dígitos.", "error"); return; }
   const copiaAnterior = { ...anterior };
-  Object.assign(anterior, { propietario: String(datos.get("propietario")).trim(), tipoDocumento: String(datos.get("tipoDocumento")), cedula: String(datos.get("cedula")).trim().toUpperCase(), correo: String(datos.get("correo")).trim(), telefono: String(datos.get("telefono")).trim(), tipoMantenimiento: String(datos.get("tipoMantenimiento")), fecha: String(datos.get("fecha")), horaRevision: String(datos.get("horaRevision")), estado: String(datos.get("estado")), descripcion: String(datos.get("descripcion")).trim(), observaciones: String(datos.get("observaciones")).trim(), vehiculo: { marca: String(datos.get("marca")).trim(), modelo: String(datos.get("modelo")).trim(), anio: Number(datos.get("anio")), placa: String(datos.get("placa")).trim().toUpperCase(), kilometraje: Number(datos.get("kilometraje")) } });
+  Object.assign(anterior, { propietario: String(datos.get("propietario")).trim(), tipoDocumento: String(datos.get("tipoDocumento")), cedula: String(datos.get("cedula")).trim().toUpperCase(), correo: String(datos.get("correo")).trim(), telefono: String(datos.get("telefono")).trim(), tipoMantenimiento: String(datos.get("tipoMantenimiento")), fecha: String(datos.get("fecha")), horaRevision: String(datos.get("horaRevision")), jornada: String(datos.get("jornada")), confirmacion: datos.has("confirmacion"), estado: String(datos.get("estado")), descripcion: String(datos.get("descripcion")).trim(), observaciones: String(datos.get("observaciones")).trim(), vehiculo: { marca: String(datos.get("marca")).trim(), modelo: String(datos.get("modelo")).trim(), anio: Number(datos.get("anio")), placa: String(datos.get("placa")).trim().toUpperCase(), kilometraje: Number(datos.get("kilometraje")) } });
   if (!guardarMantenimientos()) { Object.assign(anterior, copiaAnterior); mostrarNotificacion("No se pudieron guardar los cambios en el navegador.", "error"); return; }
   guardarHistorial("editado", anterior);
   const propietarioCuenta = usuarios.find(usuario => usuario.id === anterior.usuarioId);
   if (propietarioCuenta) { propietarioCuenta.tipoDocumento = anterior.tipoDocumento; propietarioCuenta.cedula = anterior.cedula; propietarioCuenta.telefono = anterior.telefono; guardarUsuarios(); }
   document.querySelector("#dialogo-mantenimiento").close(); renderizarTabla(); renderizarUsuarios(); mostrarNotificacion("La solicitud fue actualizada.");
 }
-function cambiarEstadoActivo(id) {
+async function cambiarEstadoActivo(id) {
   const item = mantenimientos.find(registro => registro.id === id);
   if (!item) return;
   const estabaActiva = item.activa !== false;
-  if (estabaActiva && !window.confirm(`¿Desactivar la solicitud ${item.id}? El registro seguirá disponible para el administrador.`)) return;
+  if (estabaActiva && !await confirmarAccion("El registro seguirá disponible para el administrador y se podrá reactivar después.", `¿Desactivar la solicitud ${item.id}?`, "Desactivar")) return;
   item.activa = !estabaActiva;
   if (!guardarMantenimientos()) { item.activa = estabaActiva; mostrarNotificacion("No se pudo guardar el cambio de estado.", "error"); return; }
   guardarHistorial(item.activa ? "activado" : "desactivado", item); renderizarTabla();
   mostrarNotificacion(item.activa ? "Solicitud activada." : "Solicitud desactivada.");
 }
-function eliminarMantenimiento(id) {
+async function eliminarMantenimiento(id) {
   const item = mantenimientos.find(registro => registro.id === id);
-  if (!item || !window.confirm(`¿Eliminar permanentemente la solicitud ${item.id} de ${item.propietario}?`)) return;
+  if (!item || !await confirmarAccion(`Se eliminará permanentemente la solicitud de ${item.propietario}.`, `¿Eliminar ${item.id}?`, "Eliminar solicitud")) return;
   const listaAnterior = mantenimientos;
   mantenimientos = mantenimientos.filter(registro => registro.id !== item.id);
   if (!guardarMantenimientos()) { mantenimientos = listaAnterior; mostrarNotificacion("No se pudo eliminar la solicitud del almacenamiento.", "error"); return; }

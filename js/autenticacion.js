@@ -4,7 +4,8 @@ function obtenerSesion() { return leerJSON(CONFIGURACION.claves.sesion, null); }
 function verificarSesion(rolRequerido) {
   const sesion = obtenerSesion();
   if (!sesion) { window.location.href = "login.html?aviso=sesion"; return null; }
-  if (sesion.rol === "usuario" && !obtenerUsuarios().some(usuario => usuario.id === sesion.id && usuario.rol === "usuario")) {
+  const cuentaActiva = obtenerUsuarios().find(usuario => usuario.id === sesion.id && usuario.rol === sesion.rol && usuario.activo !== false);
+  if (!cuentaActiva) {
     localStorage.removeItem(CONFIGURACION.claves.sesion);
     window.location.href = "login.html?aviso=cuenta";
     return null;
@@ -19,9 +20,11 @@ function iniciarSesion(evento) {
   evento.preventDefault();
   const correo = document.querySelector("#correo").value.trim().toLowerCase();
   const password = document.querySelector("#password").value;
-  const usuario = usuarios.find(persona => persona.correo.toLowerCase() === correo && persona.password === password);
+  const cuenta = usuarios.find(persona => persona.correo.toLowerCase() === correo);
   const error = document.querySelector("#error-login");
-  if (!usuario) { error.textContent = "El correo o la contraseña no son correctos."; error.hidden = false; return; }
+  if (!cuenta || cuenta.password !== password) { error.textContent = "El correo o la contraseña no son correctos."; error.hidden = false; return; }
+  if (cuenta.activo === false) { error.textContent = "Esta cuenta está deshabilitada. Contacta al administrador."; error.hidden = false; return; }
+  const usuario = cuenta;
   const sesion = { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol };
   if (!escribirJSON(CONFIGURACION.claves.sesion, sesion)) { error.textContent = "No se pudo iniciar sesión porque el navegador bloqueó el almacenamiento local."; error.hidden = false; return; }
   window.location.href = usuario.rol === "admin" ? "admin.html" : "mis-solicitudes.html";
@@ -49,7 +52,7 @@ function registrarUsuario(evento) {
   }
   if (!validarIdentificacion(tipoDocumento, cedula)) { error.textContent = "El documento no coincide con el tipo seleccionado."; error.hidden = false; return; }
   if (!/^\d{10}$/.test(telefono)) { error.textContent = "El teléfono celular debe tener exactamente 10 dígitos."; error.hidden = false; return; }
-  const nuevoUsuario = { id: Date.now(), nombre, correo, password, rol: "usuario", tipoDocumento, cedula, telefono };
+  const nuevoUsuario = { id: Date.now(), nombre, correo, password, rol: "usuario", tipoDocumento, cedula, telefono, activo: true };
   usuarios.push(nuevoUsuario);
   if (!guardarUsuarios()) {
     usuarios.pop(); error.textContent = "No se pudo guardar la cuenta. Revisa que el almacenamiento del navegador esté habilitado."; error.hidden = false; return;

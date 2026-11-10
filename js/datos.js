@@ -8,13 +8,15 @@ const TIPOS_MANTENIMIENTO = [
 const ESTADOS = ["Pendiente", "En proceso", "Finalizado"];
 const CONFIGURACION = { claves: { usuarios: "autoPan_usuarios", mantenimientos: "autoPan_mantenimientos", sesion: "autoPan_sesion", historial: "autoPan_historial" } };
 const USUARIOS_INICIALES = [
-  { id: 1, nombre: "Administrador", correo: "admin@autoPan.com", password: "admin123", rol: "admin", cedula: "", telefono: "" },
-  { id: 2, nombre: "Usuario Demo", correo: "usuario@autoPan.com", password: "usuario123", rol: "usuario", tipoDocumento: "cedula", cedula: "0912345678", telefono: "0988618939" }
+  { id: 1, nombre: "Administrador", correo: "admin@autoPan.com", password: "admin123", rol: "admin", tipoDocumento: "cedula", cedula: "0923456789", telefono: "0987654321", activo: true },
+  { id: 2, nombre: "Usuario Demo", correo: "usuario@autoPan.com", password: "usuario123", rol: "usuario", tipoDocumento: "cedula", cedula: "0912345678", telefono: "0988618939", activo: true },
+  { id: 3, nombre: "Cliente de Prueba", correo: "cliente.demo@autoPan.com", password: "cliente123", rol: "usuario", tipoDocumento: "cedula", cedula: "1712345678", telefono: "0998765432", activo: true }
 ];
 const MANTENIMIENTOS_INICIALES = [
-  { id: "AC-1001", usuarioId: 2, propietario: "Usuario Demo", tipoDocumento: "cedula", cedula: "0912345678", correo: "usuario@autoPan.com", telefono: "0988618939", vehiculo: { marca: "Toyota", modelo: "Corolla", anio: 2020, placa: "ABC-1234", kilometraje: 50000 }, tipoMantenimiento: "Cambio de aceite", fecha: "2026-11-25", horaRevision: "09:00", descripcion: "Cambio de aceite y filtros", observaciones: "Prefiere atención por la mañana", estado: "Pendiente", creado: "2026-11-08T09:00:00.000Z" },
-  { id: "AC-1002", usuarioId: 2, propietario: "Usuario Demo", tipoDocumento: "cedula", cedula: "0912345678", correo: "usuario@autoPan.com", telefono: "0988618939", vehiculo: { marca: "Kia", modelo: "Rio", anio: 2019, placa: "PQR-5678", kilometraje: 72000 }, tipoMantenimiento: "Revisión de frenos", fecha: "2026-11-27", horaRevision: "10:30", descripcion: "Revisar ruido al frenar", observaciones: "", estado: "En proceso", creado: "2026-11-08T10:00:00.000Z" },
-  { id: "AC-1003", usuarioId: 1, propietario: "María Fernanda López", tipoDocumento: "cedula", cedula: "0923456789", correo: "maria@example.com", telefono: "0987654321", vehiculo: { marca: "Chevrolet", modelo: "Onix", anio: 2022, placa: "GTR-2468", kilometraje: 28000 }, tipoMantenimiento: "Diagnóstico general", fecha: "2026-11-20", horaRevision: "14:00", descripcion: "Revisión preventiva antes de viajar", observaciones: "", estado: "Finalizado", creado: "2026-11-08T11:00:00.000Z" }
+  { id: "AC-1001", usuarioId: 2, propietario: "Usuario Demo", tipoDocumento: "cedula", cedula: "0912345678", correo: "usuario@autoPan.com", telefono: "0988618939", vehiculo: { marca: "Toyota", modelo: "Corolla", anio: 2020, placa: "ABC-1234", kilometraje: 50000 }, tipoMantenimiento: "Cambio de aceite", fecha: "2026-11-25", horaRevision: "09:00", jornada: "Mañana", confirmacion: true, descripcion: "Cambio de aceite y filtros", observaciones: "Prefiere atención por la mañana", estado: "Pendiente", creado: "2026-11-08T09:00:00.000Z" },
+  { id: "AC-1002", usuarioId: 2, propietario: "Usuario Demo", tipoDocumento: "cedula", cedula: "0912345678", correo: "usuario@autoPan.com", telefono: "0988618939", vehiculo: { marca: "Kia", modelo: "Rio", anio: 2019, placa: "PQR-5678", kilometraje: 72000 }, tipoMantenimiento: "Revisión de frenos", fecha: "2026-11-27", horaRevision: "10:30", jornada: "Tarde", confirmacion: true, descripcion: "Revisar ruido al frenar", observaciones: "", estado: "En proceso", creado: "2026-11-08T10:00:00.000Z" },
+  { id: "AC-1003", usuarioId: 1, propietario: "María Fernanda López", tipoDocumento: "cedula", cedula: "0923456789", correo: "maria@example.com", telefono: "0987654321", vehiculo: { marca: "Chevrolet", modelo: "Onix", anio: 2022, placa: "GTR-2468", kilometraje: 28000 }, tipoMantenimiento: "Diagnóstico general", fecha: "2026-11-20", horaRevision: "14:00", jornada: "Tarde", confirmacion: true, descripcion: "Revisión preventiva antes de viajar", observaciones: "", estado: "Finalizado", creado: "2026-11-08T11:00:00.000Z" },
+  { id: "AC-1004", usuarioId: 3, propietario: "Cliente de Prueba", tipoDocumento: "cedula", cedula: "1712345678", correo: "cliente.demo@autoPan.com", telefono: "0998765432", vehiculo: { marca: "Hyundai", modelo: "Accent", anio: 2021, placa: "HJK-3910", kilometraje: 41000 }, tipoMantenimiento: "Revisión de neumáticos", fecha: "2026-11-30", horaRevision: "11:00", jornada: "Mañana", confirmacion: true, descripcion: "Verificar presión y desgaste", observaciones: "", estado: "Pendiente", creado: "2026-11-09T09:00:00.000Z" }
 ];
 
 function leerJSON(clave, valorInicial) {
@@ -41,11 +43,20 @@ function escaparHTML(valor) {
   return String(valor ?? "").replace(/[&<>"']/g, caracter => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[caracter]);
 }
 function mostrarNotificacion(mensaje, tipo = "exito") {
+  if (window.Swal) {
+    const icono = tipo === "error" ? "error" : tipo === "advertencia" ? "warning" : "success";
+    window.Swal.fire({ toast: true, position: "top-end", icon: icono, title: mensaje, showConfirmButton: false, timer: 3500, timerProgressBar: true });
+    return;
+  }
   let aviso = document.querySelector(".notificacion");
   if (!aviso) { aviso = document.createElement("div"); aviso.className = "notificacion"; aviso.setAttribute("role", "status"); document.body.append(aviso); }
   aviso.textContent = mensaje; aviso.className = `notificacion ${tipo} visible`;
   window.clearTimeout(mostrarNotificacion.temporizador);
   mostrarNotificacion.temporizador = window.setTimeout(() => aviso.classList.remove("visible"), 3500);
+}
+function confirmarAccion(texto, titulo = "¿Confirmas esta acción?", textoBoton = "Confirmar") {
+  if (window.Swal) return window.Swal.fire({ title: titulo, text: texto, icon: "warning", showCancelButton: true, confirmButtonColor: "#2563eb", cancelButtonColor: "#64748b", confirmButtonText: textoBoton, cancelButtonText: "Cancelar", reverseButtons: true }).then(resultado => resultado.isConfirmed);
+  return Promise.resolve(window.confirm(`${titulo}\n\n${texto}`));
 }
 function fechaLocalISO() { const ahora = new Date(); return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`; }
 function validarIdentificacion(tipo, valor) {
@@ -85,4 +96,14 @@ try {
   if (!localStorage.getItem(CONFIGURACION.claves.usuarios)) escribirJSON(CONFIGURACION.claves.usuarios, usuarios);
   if (!localStorage.getItem(CONFIGURACION.claves.mantenimientos)) escribirJSON(CONFIGURACION.claves.mantenimientos, mantenimientos);
   if (!localStorage.getItem(CONFIGURACION.claves.historial)) escribirJSON(CONFIGURACION.claves.historial, historial);
+  if (localStorage.getItem("autoPan_versionDatos") !== "2") {
+    const clientePrueba = USUARIOS_INICIALES.find(usuario => usuario.id === 3);
+    const mantenimientoPrueba = MANTENIMIENTOS_INICIALES.find(item => item.id === "AC-1004");
+    let cambioUsuarios = false; let cambioMantenimientos = false;
+    if (clientePrueba && !usuarios.some(usuario => usuario.id === clientePrueba.id || usuario.correo.toLowerCase() === clientePrueba.correo.toLowerCase())) { usuarios.push(clientePrueba); cambioUsuarios = true; }
+    if (mantenimientoPrueba && !mantenimientos.some(item => item.id === mantenimientoPrueba.id)) { mantenimientos.push(mantenimientoPrueba); cambioMantenimientos = true; }
+    const usuariosGuardados = !cambioUsuarios || guardarUsuarios();
+    const mantenimientosGuardados = !cambioMantenimientos || guardarMantenimientos();
+    if (usuariosGuardados && mantenimientosGuardados) localStorage.setItem("autoPan_versionDatos", "2");
+  }
 } catch (error) { console.warn("El navegador no habilitó el almacenamiento local:", error); }

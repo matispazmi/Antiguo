@@ -1,6 +1,6 @@
 # AutoPan — Gestión de mantenimiento vehicular
 
-Aplicación académica construida con HTML, CSS y JavaScript puro. No requiere servidor, frameworks, base de datos ni dependencias. Los datos de demostración y las solicitudes se almacenan en el `localStorage` del navegador actual.
+Aplicación académica de frontend. No requiere servidor, base de datos, instalación de paquetes ni conexión a Internet: Bootstrap y SweetAlert2 se incluyen como archivos locales. Los datos de demostración y las solicitudes se almacenan en el `localStorage` del navegador actual.
 
 ## Cómo ejecutar
 
@@ -12,6 +12,7 @@ Aplicación académica construida con HTML, CSS y JavaScript puro. No requiere s
    | --- | --- | --- |
    | Administrador | `admin@autoPan.com` | `admin123` |
    | Usuario | `usuario@autoPan.com` | `usuario123` |
+   | Usuario de prueba | `cliente.demo@autoPan.com` | `cliente123` |
 
 No hay que instalar paquetes. Para reiniciar los datos de muestra, borra las claves `autoPan_usuarios`, `autoPan_mantenimientos`, `autoPan_sesion` y `autoPan_historial` desde el almacenamiento local del navegador.
 
@@ -19,19 +20,24 @@ No hay que instalar paquetes. Para reiniciar los datos de muestra, borra las cla
 
 - **Inicio (`index.html`)**: presenta los servicios, beneficios y datos ficticios del taller.
 - **Acceso y registro (`login.html`)**: inicia sesión o registra cuentas que reciben siempre el rol `usuario`. Los administradores no se registran desde el formulario público.
-- **Solicitudes (`mantenimiento.html`)**: registra propietario, documento, vehículo, servicio, fecha y hora de revisión. Valida cédula de 10 dígitos, RUC de 13, pasaporte alfanumérico y teléfono celular de 10 dígitos.
+- **Perfil (`perfil.html`)**: muestra nombre, correo, rol y contacto; permite actualizar los datos personales y opcionalmente cambiar la contraseña. El correo se muestra como solo lectura.
+- **Solicitudes (`mantenimiento.html`)**: registra propietario, documento, vehículo, servicio, fecha, hora y jornada de revisión. Incluye selección de mañana/tarde y confirmación de datos. Valida cédula de 10 dígitos, RUC de 13, pasaporte alfanumérico y teléfono celular de 10 dígitos.
 - **Mis solicitudes (`mis-solicitudes.html`)**: muestra las solicitudes asociadas a la cuenta activa y su estado.
-- **Administración (`admin.html`)**: permite buscar, filtrar, consultar, editar, desactivar, reactivar y eliminar solicitudes. El directorio permite editar y eliminar cuentas; las solicitudes históricas se conservan al eliminar una cuenta.
+- **Administración (`admin.html`)**: permite buscar, filtrar, consultar, crear solicitudes para clientes, editar, desactivar, reactivar y eliminar registros. El directorio permite editar, habilitar, deshabilitar y eliminar cuentas; las solicitudes históricas se conservan al eliminar una cuenta.
 
 ## Archivos
 
 ```text
-index.html, login.html, mantenimiento.html, mis-solicitudes.html, admin.html
+index.html, login.html, perfil.html, mantenimiento.html, mis-solicitudes.html, admin.html
 css/estilos.css
-js/datos.js, js/autenticacion.js, js/mantenimiento.js, js/admin.js
+js/datos.js, js/autenticacion.js, js/perfil.js, js/mantenimiento.js, js/admin.js
 img/taller-autoPan.svg
+vendor/bootstrap/ y vendor/sweetalert2/
+REGISTRO_IA_Y_RECURSOS.md
 ```
 
 Los usuarios, mantenimientos e historial son arrays de objetos definidos y gestionados en `js/datos.js`. Las páginas guardan y recuperan estos arrays con `JSON.stringify()` y `JSON.parse()` usando `localStorage`. El almacenamiento es propio de cada navegador y equipo; no se sube a GitHub ni se comparte entre usuarios.
+
+Los ejemplos de inicio incluyen tres cuentas y los datos nuevos se agregan al almacenamiento existente sin borrar solicitudes anteriores. Bootstrap se usa en los formularios y en el perfil; SweetAlert2 muestra avisos y confirmaciones de eliminación. Las dos bibliotecas están copiadas dentro de `vendor/` con sus licencias. Consulta `REGISTRO_IA_Y_RECURSOS.md` para el registro de apoyo de IA y las fuentes.
 
 > **Aviso académico:** la autenticación y los roles son una simulación. Las contraseñas están en el código y el almacenamiento del navegador se puede modificar. No uses información real ni este proyecto como sistema seguro.

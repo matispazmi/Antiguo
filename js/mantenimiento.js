@@ -23,40 +23,53 @@ function agregarMantenimiento(evento) {
   const sesion = verificarSesion();
   if (!sesion || !validarFormulario(formulario)) return;
   const datos = new FormData(formulario);
-  const usuario = usuarios.find(persona => persona.id === sesion.id);
+  const usuarioId = sesion.rol === "admin" ? Number(datos.get("usuarioId")) : sesion.id;
+  const usuario = usuarios.find(persona => persona.id === usuarioId && persona.activo !== false && persona.rol === "usuario");
+  if (!usuario) { mostrarNotificacion("Selecciona una cuenta de cliente activa para esta solicitud.", "error"); return; }
   const mantenimiento = {
-    id: generarId(), usuarioId: sesion.id,
-    propietario: sesion.rol === "admin" ? String(datos.get("propietario")).trim() : sesion.nombre,
-    tipoDocumento: String(datos.get("tipoDocumento")), cedula: String(datos.get("cedula")).trim(), correo: sesion.rol === "admin" ? String(datos.get("correo")).trim() : sesion.correo,
+    id: generarId(), usuarioId,
+    propietario: usuario.nombre,
+    tipoDocumento: String(datos.get("tipoDocumento")), cedula: String(datos.get("cedula")).trim(), correo: usuario.correo,
     telefono: String(datos.get("telefono")).trim(),
     vehiculo: { marca: String(datos.get("marca")).trim(), modelo: String(datos.get("modelo")).trim(), anio: Number(datos.get("anio")), placa: String(datos.get("placa")).trim().toUpperCase(), kilometraje: Number(datos.get("kilometraje")) },
-    tipoMantenimiento: String(datos.get("tipoMantenimiento")), fecha: String(datos.get("fecha")), horaRevision: String(datos.get("horaRevision")), descripcion: String(datos.get("descripcion")).trim(),
-    observaciones: String(datos.get("observaciones") || "").trim(), estado: "Pendiente", creado: new Date().toISOString()
+    tipoMantenimiento: String(datos.get("tipoMantenimiento")), fecha: String(datos.get("fecha")), horaRevision: String(datos.get("horaRevision")), jornada: String(datos.get("jornada")), confirmacion: datos.has("confirmacion"), descripcion: String(datos.get("descripcion")).trim(),
+    observaciones: String(datos.get("observaciones") || "").trim(), estado: "Pendiente", activa: true, creado: new Date().toISOString()
   };
+  const usuarioAnterior = { ...usuario };
+  usuario.tipoDocumento = mantenimiento.tipoDocumento; usuario.cedula = mantenimiento.cedula; usuario.telefono = mantenimiento.telefono;
+  if (!guardarUsuarios()) { Object.assign(usuario, usuarioAnterior); mostrarNotificacion("No se pudieron guardar los datos del cliente. Revisa el almacenamiento local.", "error"); return; }
   mantenimientos.push(mantenimiento);
-  if (!guardarMantenimientos()) { mantenimientos.pop(); mostrarNotificacion("No se pudo guardar la solicitud. Habilita el almacenamiento local del navegador e inténtalo de nuevo.", "error"); return; }
+  if (!guardarMantenimientos()) { mantenimientos.pop(); Object.assign(usuario, usuarioAnterior); guardarUsuarios(); mostrarNotificacion("No se pudo guardar la solicitud. Revisa el almacenamiento local e inténtalo de nuevo.", "error"); return; }
   guardarHistorial("creado", mantenimiento);
-  if (sesion.rol !== "admin" && usuario) {
-    usuario.tipoDocumento = mantenimiento.tipoDocumento; usuario.cedula = mantenimiento.cedula; usuario.telefono = mantenimiento.telefono;
-    guardarUsuarios();
-  }
   formulario.reset(); rellenarDatosUsuario(); mostrarNotificacion(`Solicitud ${mantenimiento.id} registrada correctamente.`);
   const placa = formulario.querySelector('[name="placa"]'); if (placa) placa.value = "";
 }
 function rellenarDatosUsuario() {
   const sesion = obtenerSesion(); if (!sesion) return;
-  const nombre = document.querySelector('[name="propietario"]'); const correo = document.querySelector('[name="correo"]');
-  if (sesion.rol !== "admin") {
-    if (nombre) { nombre.value = sesion.nombre; nombre.readOnly = true; }
-    if (correo) { correo.value = sesion.correo; correo.readOnly = true; }
-    const perfil = usuarios.find(persona => persona.id === sesion.id);
-    const tipoDocumento = document.querySelector('[name="tipoDocumento"]');
-    const cedula = document.querySelector('[name="cedula"]');
-    const telefono = document.querySelector('[name="telefono"]');
-    if (perfil && tipoDocumento) { tipoDocumento.value = perfil.tipoDocumento || "cedula"; tipoDocumento.dispatchEvent(new Event("change")); }
-    if (perfil && cedula) cedula.value = perfil.cedula || "";
-    if (perfil && telefono) telefono.value = perfil.telefono || "";
+  const selectAdmin = document.querySelector("#usuario-solicitud");
+  if (selectAdmin) selectAdmin.required = sesion.rol === "admin";
+  let perfil = usuarios.find(persona => persona.id === sesion.id);
+  if (sesion.rol === "admin" && selectAdmin) {
+    const selector = document.querySelector("#selector-usuario-admin"); selector.hidden = false;
+    const clientes = usuarios.filter(persona => persona.rol === "usuario" && persona.activo !== false);
+    selectAdmin.innerHTML = '<option value="">Selecciona una cuenta de cliente</option>' + clientes.map(persona => `<option value="${escaparHTML(persona.id)}">${escaparHTML(persona.nombre)} · ${escaparHTML(persona.correo)}</option>`).join("");
+    if (selectAdmin.dataset.configurado !== "true") {
+      selectAdmin.addEventListener("change", () => { const seleccionado = usuarios.find(persona => String(persona.id) === selectAdmin.value); rellenarDatosPropietario(seleccionado); });
+      selectAdmin.dataset.configurado = "true";
+    }
+    if (clientes.length) { selectAdmin.value = String(clientes[0].id); perfil = clientes[0]; }
   }
+  rellenarDatosPropietario(perfil);
+}
+function rellenarDatosPropietario(perfil) {
+  if (!perfil) return;
+  const nombre = document.querySelector('[name="propietario"]'); const correo = document.querySelector('[name="correo"]');
+  const tipoDocumento = document.querySelector('[name="tipoDocumento"]'); const cedula = document.querySelector('[name="cedula"]'); const telefono = document.querySelector('[name="telefono"]');
+  if (nombre) { nombre.value = perfil.nombre; nombre.readOnly = true; }
+  if (correo) { correo.value = perfil.correo; correo.readOnly = true; }
+  if (tipoDocumento) { tipoDocumento.value = perfil.tipoDocumento || "cedula"; tipoDocumento.dispatchEvent(new Event("change")); }
+  if (cedula) cedula.value = perfil.cedula || "";
+  if (telefono) telefono.value = perfil.telefono || "";
 }
 function listarMantenimientos() {
   const sesion = verificarSesion(); if (!sesion) return;
