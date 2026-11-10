@@ -20,10 +20,10 @@ No hay que instalar paquetes. Para reiniciar los datos de muestra, borra las cla
 
 - **Inicio (`index.html`)**: presenta los servicios, beneficios y datos ficticios del taller.
 - **Acceso y registro (`login.html`)**: inicia sesión o registra cuentas que reciben siempre el rol `usuario`. Los administradores no se registran desde el formulario público.
-- **Perfil (`perfil.html`)**: muestra nombre, correo, rol y contacto; permite actualizar los datos personales y opcionalmente cambiar la contraseña. El correo se muestra como solo lectura.
-- **Solicitudes (`mantenimiento.html`)**: registra propietario, documento, vehículo, servicio, fecha, hora y jornada de revisión. Incluye selección de mañana/tarde y confirmación de datos. Valida cédula de 10 dígitos, RUC de 13, pasaporte alfanumérico y teléfono celular de 10 dígitos.
-- **Mis solicitudes (`mis-solicitudes.html`)**: muestra las solicitudes asociadas a la cuenta activa y su estado.
-- **Administración (`admin.html`)**: permite buscar, filtrar, consultar, crear solicitudes para clientes, editar, desactivar, reactivar y eliminar registros. El directorio permite editar, habilitar, deshabilitar y eliminar cuentas; las solicitudes históricas se conservan al eliminar una cuenta.
+- **Perfil (`perfil.html`)**: muestra nombre, correo y contacto; permite actualizar los datos personales y opcionalmente cambiar la contraseña. El correo se muestra como solo lectura y no se presenta el rol en este perfil.
+- **Solicitudes (`mantenimiento.html`)**: obtiene automáticamente propietario y contacto de la cuenta, y solicita solo los datos del vehículo y del servicio. Incluye fecha, hora, jornada, confirmación y descripción.
+- **Mis solicitudes (`mis-solicitudes.html`)**: muestra solo las solicitudes de la cuenta activa. El cliente puede cancelar solicitudes pendientes y consultar el historial con su estado.
+- **Administración (`admin.html`)**: separa en pestañas la gestión de solicitudes y el directorio de usuarios. Permite buscar, filtrar, consultar, crear solicitudes para clientes, editar solo los datos del mantenimiento, desactivar, reactivar y eliminar. En la pestaña de usuarios se editan los datos personales y se habilitan, deshabilitan o eliminan cuentas.
 
 ## Archivos
 
@@ -36,7 +36,7 @@ vendor/bootstrap/ y vendor/sweetalert2/
 REGISTRO_IA_Y_RECURSOS.md
 ```
 
-Los usuarios, mantenimientos e historial son arrays de objetos definidos y gestionados en `js/datos.js`. Las páginas guardan y recuperan estos arrays con `JSON.stringify()` y `JSON.parse()` usando `localStorage`. El almacenamiento es propio de cada navegador y equipo; no se sube a GitHub ni se comparte entre usuarios.
+Los usuarios, mantenimientos e historial son arrays de objetos definidos y gestionados en `js/datos.js`. Durante el uso, las operaciones agregan, editan y eliminan elementos directamente de esos arrays en memoria; después guardan una copia con `JSON.stringify()` en `localStorage`, que se recupera al abrir la aplicación de nuevo con `JSON.parse()`. El almacenamiento es propio de cada navegador y equipo; no se sube a GitHub ni se comparte entre usuarios.
 
 Los ejemplos de inicio incluyen tres cuentas y los datos nuevos se agregan al almacenamiento existente sin borrar solicitudes anteriores. Bootstrap se usa en los formularios y en el perfil; SweetAlert2 muestra avisos y confirmaciones de eliminación. Las dos bibliotecas están copiadas dentro de `vendor/` con sus licencias. Consulta `REGISTRO_IA_Y_RECURSOS.md` para el registro de apoyo de IA y las fuentes.
 
